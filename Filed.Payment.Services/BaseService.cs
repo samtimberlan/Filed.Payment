@@ -29,7 +29,7 @@ namespace Filed.Payments.Services
             responses.Add(500, "An error occurred");
 
             var rnd = new Random();
-            int index = rnd.Next(0,2);
+            int index = rnd.Next(0,3);
 
             string responseMessage;
 
