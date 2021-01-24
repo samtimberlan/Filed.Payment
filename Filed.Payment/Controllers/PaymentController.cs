@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace Filed.Payment.Controllers
 {
-    //[ApiController]
+    [ApiController]
     public class PaymentController : Controller
     {
         private readonly IPaymentService _paymentService;
