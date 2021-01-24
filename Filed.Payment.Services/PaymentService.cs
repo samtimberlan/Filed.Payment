@@ -53,28 +53,33 @@ namespace Filed.Payments.Services
                 return _responseFactory.ExecutionResponse<PaymentResult>("Cannot process payment for amounts less than 0", paymentResult, statusCode: 400);
             }
 
-            int thirdPartyResponseCode = 500;
+            // Default result
+            PaymentResult thirdPartyResponse = new PaymentResult 
+            { 
+                Message = "An error occurred",
+                StatusCode = 500
+            };
 
                 if (paymentModel.Amount < 20)
                 {
                     // Use ICheapPaymentGateway. No retry
-                    thirdPartyResponseCode = _cheapPaymentGateway.BankTransfer(paymentModel).StatusCode;
+                    thirdPartyResponse = _cheapPaymentGateway.BankTransfer(paymentModel);
                 }
                 else if (paymentModel.Amount >= 21 && paymentModel.Amount <= 500)
                 {
                     // Use IExpensivePaymentGateway and retry once with ICheapPaymentGateway
-                    thirdPartyResponseCode = RetryWithCheapPaymentGateway(paymentModel);
+                    thirdPartyResponse = RetryWithCheapPaymentGateway(paymentModel);
                 }
                 else if (paymentModel.Amount > 500)
                 {
                     // Use PremiumPaymentService and retry 3 times
-                    thirdPartyResponseCode = RetryThriceWithPremiumGateway(paymentModel);
+                    thirdPartyResponse = RetryThriceWithPremiumGateway(paymentModel);
                 }
                 
             var payment = PaymentMapping.CreateEntity(paymentModel, userName, userName);
 
             // Map response from third party
-            var paymentState = UpdatePaymentStateFromThirdParty(payment, thirdPartyResponseCode);
+            var paymentState = UpdatePaymentStateFromThirdParty(payment, thirdPartyResponse.StatusCode);
 
             // Save to DB
             _commandRepostory.Add(payment);
@@ -82,8 +87,7 @@ namespace Filed.Payments.Services
             await _commandRepostory.SaveAsync();
 
             _logger.LogInformation("Payment processed successfully.");
-            paymentResult = PaymentResultMapping.CreateEntity(200, "Payment is processed");
-            return _responseFactory.ExecutionResponse<PaymentResult>("Payment processed successfully.", paymentResult, status: true);
+            return _responseFactory.ExecutionResponse<PaymentResult>(thirdPartyResponse.Message, statusCode: thirdPartyResponse.StatusCode, status: true);
         }
 
         
@@ -92,20 +96,20 @@ namespace Filed.Payments.Services
         /// </summary>
         /// <param name="paymentModel"></param>
         /// <returns></returns>
-        private int RetryWithCheapPaymentGateway(PaymentModel paymentModel)
+        private PaymentResult RetryWithCheapPaymentGateway(PaymentModel paymentModel)
         {
-            var expensiveGatewayResponseCode = _expensivePaymentGateway.BankTransfer(paymentModel).StatusCode;
+            var expensiveGatewayResponse = _expensivePaymentGateway.BankTransfer(paymentModel);
 
-            if (expensiveGatewayResponseCode == _config.ThirdPartyErrorResponse)
+            if (expensiveGatewayResponse.StatusCode == _config.ThirdPartyErrorResponse)
             {
                 // Service is unavailable. Retry with cheap gateway
-                int thirdPartyResponseCode = _cheapPaymentGateway.BankTransfer(paymentModel).StatusCode;
+                var thirdPartyResponse = _cheapPaymentGateway.BankTransfer(paymentModel);
 
-                return thirdPartyResponseCode;
+                return thirdPartyResponse;
             }
             else
             {
-                return expensiveGatewayResponseCode;
+                return expensiveGatewayResponse;
             }
 
         }
@@ -115,25 +119,25 @@ namespace Filed.Payments.Services
         /// </summary>
         /// <param name="paymentModel"></param>
         /// <returns></returns>
-        private int RetryThriceWithPremiumGateway(PaymentModel paymentModel)
+        private PaymentResult RetryThriceWithPremiumGateway(PaymentModel paymentModel)
         {
-            int premiumGatewayResponseCode = BankTransfer(paymentModel).StatusCode;
+            var premiumGatewayResponse = BankTransfer(paymentModel);
 
             // Keep calling BankTransfer if response is error
 
             int maxRetries = 3;
             for (int i = 1; i <= maxRetries; i++)
             {
-                if (premiumGatewayResponseCode != _config.ThirdPartyErrorResponse)
+                if (premiumGatewayResponse.StatusCode != _config.ThirdPartyErrorResponse)
                 {
-                    return premiumGatewayResponseCode;
+                    return premiumGatewayResponse;
                 }
                 else
                 {
-                    premiumGatewayResponseCode = BankTransfer(paymentModel).StatusCode;
+                    premiumGatewayResponse = BankTransfer(paymentModel);
                 }
             }
-            return premiumGatewayResponseCode;
+            return premiumGatewayResponse;
         }
 
         /// <summary>
