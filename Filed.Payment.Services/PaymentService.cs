@@ -86,8 +86,9 @@ namespace Filed.Payments.Services
             _paymentStateCommandRepostory.Add(paymentState);
             await _commandRepostory.SaveAsync();
 
+            // Send thirdPartyResponse as the response data, in case an integrator wants to change transaction status based on status code
             _logger.LogInformation("Payment processed successfully.");
-            return _responseFactory.ExecutionResponse<PaymentResult>(thirdPartyResponse.Message, statusCode: thirdPartyResponse.StatusCode, status: true);
+            return _responseFactory.ExecutionResponse<PaymentResult>(thirdPartyResponse.Message, statusCode: thirdPartyResponse.StatusCode, data:thirdPartyResponse, status: true);
         }
 
         
